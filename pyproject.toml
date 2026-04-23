@@ -1,0 +1,11 @@
+[project]
+name = "diffusion-from-scratch"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "torchvision>=0.16",
+    "einops>=0.7",
+    "tqdm",
+    "matplotlib",
+]
