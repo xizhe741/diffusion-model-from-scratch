@@ -1,0 +1,81 @@
+import torch
+import math
+from torch import nn
+import torch.nn.functional as F
+
+def sinusoidal_embedding(embedded_dim,t):
+    "输入:嵌入维度;t是一个(B,)向量"
+    i = torch.arange(embedded_dim//2)
+    freq = torch.exp((-2*math.log(10000)*i/embedded_dim)).to(t.device)
+    args = t[:, None] * freq[None, :]
+    emb = torch.cat([torch.sin(args), torch.cos(args)], dim=-1)  # (B, d)
+    return emb
+
+class ResBlock(nn.Module):
+    def __init__(self,in_channels,out_channels,hidden_dim,embedded_dim):
+        super().__init__()
+        self.norm1 = nn.GroupNorm(8,in_channels)
+        self.norm2 = nn.GroupNorm(8,hidden_dim)
+        self.conv1 = nn.Conv2d(in_channels,hidden_dim,kernel_size=3,stride=1,padding=1)
+        self.conv2 = nn.Conv2d(hidden_dim,out_channels,kernel_size=3,stride=1,padding=1)
+        self.activate = nn.SiLU()
+        self.time_linear = nn.Linear(embedded_dim,hidden_dim)
+        self.embedded_dim = embedded_dim
+        self.hidden_dim = hidden_dim
+        if in_channels == out_channels:
+            self.residual_conv = nn.Identity()
+        else:
+            self.residual_conv = nn.Conv2d(in_channels, out_channels, 1)
+
+    def forward(self,x,t_emb):
+        t_emb = self.time_linear(t_emb).view(-1,self.hidden_dim,1,1)
+        res = self.residual_conv(x)
+        x = self.norm1(x)
+        x = self.activate(x)
+        x = self.conv1(x) + t_emb        #注入时间数据
+        x = self.norm2(x)
+        x = self.activate(x)
+        x_res = self.conv2(x) +res
+        return x_res
+    
+class self_attention(nn.Module):
+    def __init__(self, channels, **kwargs):
+        super().__init__()
+        self.toQ = nn.Linear(channels,channels)
+        self.toK = nn.Linear(channels,channels)
+        self.toV = nn.Linear(channels,channels)
+        self.toX = nn.Linear(channels,channels)
+        self.norm = nn.GroupNorm(8, channels)
+        self.channels =channels
+
+    def forward(self,x):
+        B,C,H,W = x.shape
+        res = x
+        x = x.reshape(B,C,H*W).permute(0,2,1)
+        Q = self.toQ(x)
+        K = self.toK(x)
+        V = self.toV(x)
+        x = F.scaled_dot_product_attention(Q, K, V)
+        x = self.toX(x)
+        x = self.norm(x)
+        x = x.permute(0,2,1).reshape(B,C,H,-1)
+        x_res = x+res
+        return x_res
+    
+class Downsample(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv = nn.Conv2d(channels, channels, 3, stride=2, padding=1)
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class Upsample(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv = nn.Conv2d(channels, channels, 3, padding=1)
+
+    def forward(self, x):
+        x = F.interpolate(x, scale_factor=2, mode='nearest')
+        return self.conv(x)

@@ -9,3 +9,11 @@ dependencies = [
     "tqdm",
     "matplotlib",
 ]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]         # 从项目根目录开始找
+include = ["src*"]    # 只包含以 src 开头的目录作为 Python 包
