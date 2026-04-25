@@ -12,23 +12,23 @@ def sinusoidal_embedding(embedded_dim,t):
     return emb
 
 class ResBlock(nn.Module):
-    def __init__(self,in_channels,out_channels,hidden_dim,embedded_dim):
+    def __init__(self,in_channels,out_channels,embedded_dim):
         super().__init__()
         self.norm1 = nn.GroupNorm(8,in_channels)
-        self.norm2 = nn.GroupNorm(8,hidden_dim)
-        self.conv1 = nn.Conv2d(in_channels,hidden_dim,kernel_size=3,stride=1,padding=1)
-        self.conv2 = nn.Conv2d(hidden_dim,out_channels,kernel_size=3,stride=1,padding=1)
+        self.norm2 = nn.GroupNorm(8,out_channels)
+        self.conv1 = nn.Conv2d(in_channels,out_channels,kernel_size=3,stride=1,padding=1)
+        self.conv2 = nn.Conv2d(out_channels,out_channels,kernel_size=3,stride=1,padding=1)
         self.activate = nn.SiLU()
-        self.time_linear = nn.Linear(embedded_dim,hidden_dim)
+        self.time_linear = nn.Linear(embedded_dim,out_channels)
         self.embedded_dim = embedded_dim
-        self.hidden_dim = hidden_dim
+        self.out_channels = out_channels
         if in_channels == out_channels:
             self.residual_conv = nn.Identity()
         else:
             self.residual_conv = nn.Conv2d(in_channels, out_channels, 1)
 
     def forward(self,x,t_emb):
-        t_emb = self.time_linear(t_emb).view(-1,self.hidden_dim,1,1)
+        t_emb = self.time_linear(t_emb).view(-1,self.out_channels,1,1)
         res = self.residual_conv(x)
         x = self.norm1(x)
         x = self.activate(x)
@@ -51,13 +51,13 @@ class self_attention(nn.Module):
     def forward(self,x):
         B,C,H,W = x.shape
         res = x
+        x = self.norm(x)
         x = x.reshape(B,C,H*W).permute(0,2,1)
         Q = self.toQ(x)
         K = self.toK(x)
         V = self.toV(x)
         x = F.scaled_dot_product_attention(Q, K, V)
         x = self.toX(x)
-        x = self.norm(x)
         x = x.permute(0,2,1).reshape(B,C,H,-1)
         x_res = x+res
         return x_res
