@@ -8,3 +8,6 @@ samples/
 .venv/
 *.egg-info/
 .DS_Store
+.claude/
+pkgs/
+*.html
